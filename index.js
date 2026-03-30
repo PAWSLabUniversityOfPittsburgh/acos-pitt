@@ -8,39 +8,59 @@ const https = require('https');
  * @param {Object} logData - The log payload (event, payload, protocolData)
  */
 function sendToGraylog(logData) {
-  // 1. Prepare the JSON payload
-  const postData = JSON.stringify(logData);
+  // GELF requires specific fields. Let's ensure they exist or Graylog will ignore the log.
+  const gelfData = JSON.stringify({
+    version: '1.1',
+    host: 'acos-server', // Or use os.hostname()
+    short_message: logData.event || 'ACOS Event', // CRITICAL: Graylog needs this
+    _payload: logData.payload,
+    _protocolData: logData.protocolData,
+    level: 6 // Informational
+  });
 
-  // 2. Setup request options (Note: use 'https' for port 443)
+  console.log('[Graylog-Debug] Attempting to send to: adapt2.sis.pitt.edu/graylog-gelf/');
+
   const options = {
     hostname: 'adapt2.sis.pitt.edu',
     port: 443,
     path: '/graylog-gelf/',
     method: 'POST',
     rejectUnauthorized: false,
+    timeout: 5000, // 5 second timeout so it doesn't hang forever
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData)
+      'Content-Length': Buffer.byteLength(gelfData)
     }
   };
 
-  // 3. Create the request
   const graylogReq = https.request(options, (res) => {
-    // We must consume the response data to free up memory
-    res.on('data', () => {}); 
-    if (res.statusCode >= 300) {
-      console.warn(`[Graylog] Warning: Received status ${res.statusCode}`);
-    }
+    let responseBody = '';
+    
+    console.log(`[Graylog-Debug] Status Received: ${res.statusCode} ${res.statusMessage}`);
+    
+    res.on('data', (chunk) => { responseBody += chunk; });
+    
+    res.on('end', () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log('[Graylog-Debug] Success! Graylog accepted the log.');
+      } else {
+        console.error(`[Graylog-Debug] Failed. Server said: ${responseBody}`);
+      }
+    });
   });
 
-  // 4. Handle connection errors
   graylogReq.on('error', (e) => {
-    console.error(`[Graylog] Error: ${e.message}`);
+    console.error(`[Graylog-Debug] Network/Socket Error: ${e.message}`);
   });
 
-  // 5. CRITICAL: Write the data and call .end()
-  graylogReq.write(postData);
+  graylogReq.on('timeout', () => {
+    console.error('[Graylog-Debug] Request timed out! Is the firewall blocking port 443?');
+    graylogReq.destroy();
+  });
+
+  graylogReq.write(gelfData);
   graylogReq.end();
+  console.log('[Graylog-Debug] Request stream closed (.end() called)');
 }
 
 var ACOSPITT = function () { };
