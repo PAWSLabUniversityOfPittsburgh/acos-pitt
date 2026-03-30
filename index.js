@@ -55,6 +55,7 @@ ACOSPITT.initialize = function (req, params, handlers, cb) {
 ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, responseObj, cb) {
   // Jsvee
   if (event === 'line' && protocolData.app && parseInt(protocolData.app, 10) === 35) {
+    console.log('Received line event for JSVEE: ' + JSON.stringify(payload));
     var endpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=-1&svc=ACOS";
     endpoint = util.format(endpoint, protocolData.app, protocolData['example-id'], payload,
       protocolData.usr, protocolData.grp, protocolData.sid);
@@ -65,14 +66,17 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
+      console.log('Sent response for line event for JSVEE: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     }).on('error', function () {
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      console.log('Sent error response for line event for JSVEE: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
   // Parsons problems
   else if (event === 'grade' && protocolData.app && parseInt(protocolData.app, 10) === 38) {
+    console.log('Received grade event for Parsons problem: ' + JSON.stringify(payload));
     var endpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS"; // jshint ignore:line
     endpoint = util.format(endpoint, protocolData.app, 'ps_problems', protocolData['example-id'],
       protocolData.usr, protocolData.grp, protocolData.sid, payload.points);
@@ -83,9 +87,11 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
+      console.log('Sent response for grade event for Parsons problem: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     }).on('error', function () {
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      console.log('Sent error response for grade event for Parsons problem: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
@@ -93,6 +99,7 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
   else if (event === 'log' && 
     payload.um_application_id && parseInt(payload.um_application_id, 10) === 46 &&
     payload.event_type === 'explanation' && payload.goal_name && payload.line_number) {
+    console.log('Received log event for PCEX explanation: ' + JSON.stringify(payload));
     var pcexExplanationEndpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=-1&svc=ACOS";
     pcexExplanationEndpoint = util.format(
       pcexExplanationEndpoint,
@@ -110,9 +117,11 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
+      console.log('Sent response for log event for PCEX explanation: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     }).on('error', function () {
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      console.log('Sent error response for log event for PCEX explanation: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
@@ -120,6 +129,7 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
   else if (event === 'grade' && 
     payload.event_data.um_application_id && parseInt(payload.event_data.um_application_id, 10) === 47 &&
     payload.event_data.goal_name && payload.points) {
+    console.log('Received grade event for PCEX challenge: ' + JSON.stringify(payload));
     var pcexGradeEndpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS";
     pcexGradeEndpoint = util.format(
       pcexGradeEndpoint,
@@ -138,13 +148,16 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
+      console.log('Sent response for grade event for PCEX challenge: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     }).on('error', function () {
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      console.log('Sent error response for grade event for PCEX challenge: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } else {
     res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
+    console.log('Received unsupported event: ' + event + ' with payload: ' + JSON.stringify(payload));
     cb(event, payload, req, res, protocolData, responseObj);
   }
 };
