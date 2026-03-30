@@ -17,6 +17,7 @@ function sendToGraylog(logData) {
     port: 443,
     path: '/graylog-gelf/',
     method: 'POST',
+    rejectUnauthorized: false,
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(postData)
