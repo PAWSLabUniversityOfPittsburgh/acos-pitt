@@ -1,6 +1,46 @@
 var http = require('http');
 var util = require('util');
 var htmlencode = require('htmlencode').htmlEncode;
+const https = require('https');
+
+/**
+ * Sends a log message to Graylog GELF HTTP input
+ * @param {Object} logData - The log payload (event, payload, protocolData)
+ */
+function sendToGraylog(logData) {
+  // 1. Prepare the JSON payload
+  const postData = JSON.stringify(logData);
+
+  // 2. Setup request options (Note: use 'https' for port 443)
+  const options = {
+    hostname: 'adapt2.sis.pitt.edu',
+    port: 443,
+    path: '/graylog-gelf/',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData)
+    }
+  };
+
+  // 3. Create the request
+  const graylogReq = https.request(options, (res) => {
+    // We must consume the response data to free up memory
+    res.on('data', () => {}); 
+    if (res.statusCode >= 300) {
+      console.warn(`[Graylog] Warning: Received status ${res.statusCode}`);
+    }
+  });
+
+  // 4. Handle connection errors
+  graylogReq.on('error', (e) => {
+    console.error(`[Graylog] Error: ${e.message}`);
+  });
+
+  // 5. CRITICAL: Write the data and call .end()
+  graylogReq.write(postData);
+  graylogReq.end();
+}
 
 var ACOSPITT = function () { };
 
@@ -53,111 +93,98 @@ ACOSPITT.initialize = function (req, params, handlers, cb) {
 };
 
 ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, responseObj, cb) {
+  sendToGraylog({ event, payload, protocolData });
+
   // Jsvee
   if (event === 'line' && protocolData.app && parseInt(protocolData.app, 10) === 35) {
-    console.log('Received line event for JSVEE: ' + JSON.stringify(payload));
     var endpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=-1&svc=ACOS";
     endpoint = util.format(endpoint, protocolData.app, protocolData['example-id'], payload,
       protocolData.usr, protocolData.grp, protocolData.sid);
-
+    console.log('[ACOSPITT] sending line event to CBUM: ' + endpoint);
     http.get(endpoint, function (result) {
+      console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
       if (result.statusCode === 200) {
         res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
-      console.log('Sent response for line event for JSVEE: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
-    }).on('error', function () {
+    }).on('error', function (e) {
+      console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      console.log('Sent error response for line event for JSVEE: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
   // Parsons problems
   else if (event === 'grade' && protocolData.app && parseInt(protocolData.app, 10) === 38) {
-    console.log('Received grade event for Parsons problem: ' + JSON.stringify(payload));
     var endpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS"; // jshint ignore:line
     endpoint = util.format(endpoint, protocolData.app, 'ps_problems', protocolData['example-id'],
       protocolData.usr, protocolData.grp, protocolData.sid, payload.points);
-
+    console.log('[ACOSPITT] sending grade event to CBUM: ' + endpoint);
     http.get(endpoint, function (result) {
+      console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
       if (result.statusCode === 200) {
         res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
       } else {
         res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
       }
-      console.log('Sent response for grade event for Parsons problem: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
-    }).on('error', function () {
+    }).on('error', function (e) {
+      console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
       res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      console.log('Sent error response for grade event for Parsons problem: ' + JSON.stringify(responseObj));
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
-  // pcex explanation
-  else if (event === 'log' && 
-    payload.um_application_id && parseInt(payload.um_application_id, 10) === 46 &&
-    payload.event_type === 'explanation' && payload.goal_name && payload.line_number) {
-    console.log('Received log event for PCEX explanation: ' + JSON.stringify(payload));
-    var pcexExplanationEndpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=-1&svc=ACOS";
-    pcexExplanationEndpoint = util.format(
-      pcexExplanationEndpoint,
-      parseInt(payload.um_application_id, 10),
-      encodeURIComponent(payload.goal_name),
-      encodeURIComponent(payload.line_number),
-      protocolData.usr,
-      protocolData.grp,
-      protocolData.sid
-    );
-
-    http.get(pcexExplanationEndpoint, function (result) {
-      if (result.statusCode === 200) {
-        res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      } else {
-        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+  // PCEX
+  else if (["46", "47"].includes(`${payload.um_application_id}`) || 
+           ["46", "47"].includes(`${payload.event_data?.um_application_id}`)) {
+    // send grade/explanation events to the user modeling server
+    const is_explanation_event = event === 'log' && payload.event_type === 'explanation';
+    if (event === 'grade' || is_explanation_event) {
+      const params = {
+        app: payload.um_application_id || payload.event_data?.um_application_id,
+        usr: protocolData.usr,
+        grp: protocolData.grp,
+        sid: protocolData.sid,
       }
-      console.log('Sent response for log event for PCEX explanation: ' + JSON.stringify(responseObj));
-      cb(event, payload, req, res, protocolData, responseObj);
-    }).on('error', function () {
-      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      console.log('Sent error response for log event for PCEX explanation: ' + JSON.stringify(responseObj));
-      cb(event, payload, req, res, protocolData, responseObj);
-    });
-  } 
-  // pcex challenge result
-  else if (event === 'grade' && 
-    payload.event_data.um_application_id && parseInt(payload.event_data.um_application_id, 10) === 47 &&
-    payload.event_data.goal_name && payload.points) {
-    console.log('Received grade event for PCEX challenge: ' + JSON.stringify(payload));
-    var pcexGradeEndpoint = "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS";
-    pcexGradeEndpoint = util.format(
-      pcexGradeEndpoint,
-      parseInt(payload.event_data.um_application_id, 10),
-      'PCEX_Challenge',
-      encodeURIComponent(payload.event_data.goal_name),
-      protocolData.usr,
-      protocolData.grp,
-      protocolData.sid,
-      payload.points
-    );
 
-    http.get(pcexGradeEndpoint, function (result) {
-      if (result.statusCode === 200) {
-        res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      } else {
-        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      if (event === 'grade') {
+        params.act = 'PCEX_Challenge';
+        params.sub = payload.event_data.goal_name;
+        params.res = payload.points;
+      } else if (is_explanation_event) {
+        params.act = payload.goal_name;
+        params.sub = payload.line_number;
+        params.res = -1;
       }
-      console.log('Sent response for grade event for PCEX challenge: ' + JSON.stringify(responseObj));
+
+      const endpoint = util.format(
+        "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS", 
+        params.app, params.act, params.sub, params.usr, params.grp, params.sid, params.res);
+      console.log('[ACOSPITT] sending event to CBUM: ' + endpoint);
+      http.get(endpoint, function (result) {
+        console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
+        if (result.statusCode === 200) {
+          res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
+        } else {
+          res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+        }
+        cb(event, payload, req, res, protocolData, responseObj);
+      }).on('error', function (e) {
+        console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
+        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+        cb(event, payload, req, res, protocolData, responseObj);
+      });
+    } else {
+      console.warn('[ACOSPITT] unsupported event for PCEX: ' + event);
+      res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
       cb(event, payload, req, res, protocolData, responseObj);
-    }).on('error', function () {
-      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      console.log('Sent error response for grade event for PCEX challenge: ' + JSON.stringify(responseObj));
-      cb(event, payload, req, res, protocolData, responseObj);
-    });
-  } else {
+    }
+  }
+  // Unsupported events
+  else {
+    console.warn('[ACOSPITT] unsupported event: ' + event);
     res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-    console.log('Received unsupported event: ' + event + ' with payload: ' + JSON.stringify(payload));
     cb(event, payload, req, res, protocolData, responseObj);
   }
 };
@@ -173,7 +200,7 @@ ACOSPITT.meta = {
   'name': 'pitt',
   'shortDescription': 'Protocol to load content by using the Pittsburgh protocol and to communicate with user modeling server.',
   'description': '',
-  'author': 'Teemu Sirkiä & Mohammad Hassany',
+  'author': 'Mohammad Hassany',
   'license': 'MIT',
   'version': '0.2.0',
   'url': ''
