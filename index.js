@@ -123,16 +123,20 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       protocolData.usr, protocolData.grp, protocolData.sid);
     console.log('[ACOSPITT] sending line event to CBUM: ' + endpoint);
     http.get(endpoint, function (result) {
-      console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
-      if (result.statusCode === 200) {
-        res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      } else {
-        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      }
-      cb(event, payload, req, res, protocolData, responseObj);
+      let body = '';
+      result.on('data', function (chunk) { body += chunk; });
+      result.on('end', function () {
+        console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage + ' - Body: ' + body);
+        if (result.statusCode === 200) {
+          res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+        } else {
+          res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+        }
+        cb(event, payload, req, res, protocolData, responseObj);
+      });
     }).on('error', function (e) {
       console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
-      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_error': e.message });
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
@@ -143,16 +147,20 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
       protocolData.usr, protocolData.grp, protocolData.sid, payload.points);
     console.log('[ACOSPITT] sending grade event to CBUM: ' + endpoint);
     http.get(endpoint, function (result) {
-      console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
-      if (result.statusCode === 200) {
-        res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      } else {
-        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-      }
-      cb(event, payload, req, res, protocolData, responseObj);
+      let body = '';
+      result.on('data', function (chunk) { body += chunk; });
+      result.on('end', function () {
+        console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage + ' - Body: ' + body);
+        if (result.statusCode === 200) {
+          res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+        } else {
+          res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+        }
+        cb(event, payload, req, res, protocolData, responseObj);
+      });
     }).on('error', function (e) {
       console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
-      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+      res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_error': e.message });
       cb(event, payload, req, res, protocolData, responseObj);
     });
   } 
@@ -181,19 +189,23 @@ ACOSPITT.handleEvent = function (event, payload, req, res, protocolData, respons
 
       const endpoint = util.format(
         "http://adapt2.sis.pitt.edu/cbum/um?app=%s&act=%s&sub=%s&usr=%s&grp=%s&sid=%s&res=%s&svc=ACOS", 
-        params.app, params.act, params.sub, params.usr, params.grp, params.sid, params.res);
+        params.app, encodeURIComponent(params.act), encodeURIComponent(params.sub), params.usr, params.grp, params.sid, params.res);
       console.log('[ACOSPITT] sending event to CBUM: ' + endpoint);
       http.get(endpoint, function (result) {
-        console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage);
-        if (result.statusCode === 200) {
-          res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content });
-        } else {
-          res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
-        }
-        cb(event, payload, req, res, protocolData, responseObj);
+        let body = '';
+        result.on('data', function (chunk) { body += chunk; });
+        result.on('end', function () {
+          console.log('[ACOSPITT] CBUM response: ' + result.statusCode + ' - ' + result.statusMessage + ' - Body: ' + body);
+          if (result.statusCode === 200) {
+            res.json({ 'status': 'OK', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+          } else {
+            res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_body': body });
+          }
+          cb(event, payload, req, res, protocolData, responseObj);
+        });
       }).on('error', function (e) {
         console.error('[ACOSPITT] error fetching from CBUM: ' + e.message);
-        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content });
+        res.json({ 'status': 'ERROR', 'protocol': responseObj.protocol, 'content': responseObj.content, '_error': e.message });
         cb(event, payload, req, res, protocolData, responseObj);
       });
     } else {
